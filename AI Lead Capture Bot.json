@@ -1,0 +1,225 @@
+{
+  "name": "AI Lead Capture Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "3a8d93dc-500e-422c-8678-83f0eb71ee22",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0a40f93b-9292-4f42-bbf2-3d9965b843a5",
+      "name": "Webhook",
+      "webhookId": "3a8d93dc-500e-422c-8678-83f0eb71ee22"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"You are a lead qualifier. Given this lead info: Name: {{ $json.body.name }}, Email: {{ $json.body.email }}, Message: {{ $json.body.message }}. Summarize and rate this lead as Hot, Warm, or Cold. Be concise.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "dcfd78ad-9c4d-4710-8f55-ec18f397932d",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lob7jeDqdt2oFzlS",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appqYPtDcUHWJ5fSu",
+          "mode": "list",
+          "cachedResultName": "Lead Capture",
+          "cachedResultUrl": "https://airtable.com/appqYPtDcUHWJ5fSu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblOc3RCpyyGRtAkj",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appqYPtDcUHWJ5fSu/tblOc3RCpyyGRtAkj"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Webhook').item.json.body.name }}",
+            "Email": "={{ $('Webhook').item.json.body.email }}",
+            "Message": "={{ $('Webhook').item.json.body.message }}",
+            "AI Summary": "={{ $('HTTP Request').item.json.content[0].text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "AI Summary",
+              "displayName": "AI Summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "fced16af-05c9-4844-ab2f-a8c90fb7fffc",
+      "name": "Create a record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "jYp6Nqb9F7ZjDJLZ",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "llevinmanantan@gmail.com",
+        "toEmail": "llevinmanantan@gmail.com",
+        "subject": "=New Lead: {{ $('Webhook').item.json.body.name }}",
+        "emailFormat": "text",
+        "text": "=New lead received!\n\nName: {{ $('Webhook').item.json.body.name }}\nEmail: {{ $('Webhook').item.json.body.email }}\nMessage: {{ $('Webhook').item.json.body.message }}\n\nAI Summary: {{ $('HTTP Request').item.json.content[0].text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        0
+      ],
+      "id": "81622c90-d24a-464e-a261-0da46778cb67",
+      "name": "Send an Email",
+      "webhookId": "bb4b2969-9122-4a95-81d0-b76341c24538",
+      "credentials": {
+        "smtp": {
+          "id": "iIutrVAytHUJUQAH",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a record": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cdb652bd-2f65-4c1e-9af2-6c821e4363f8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6cdeca4ecc2835fb8a8f439f5c319f75bffb70abeddc9ae4de2e74c335911986"
+  },
+  "id": "m0jwZO9Cj4pJUkrG",
+  "tags": []
+}
