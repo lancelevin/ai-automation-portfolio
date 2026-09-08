@@ -1,0 +1,126 @@
+{
+  "name": "AI Customer Support Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "21511529-968b-4680-ab3a-543f2d5cd850",
+      "name": "Telegram Trigger",
+      "webhookId": "8aa99548-7ff9-435d-b676-b570a6058044",
+      "credentials": {
+        "telegramApi": {
+          "id": "CZQjIAcm0hGfDTeJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are 'Mami', a friendly and professional AI assistant for Mani Mami, a nail salon based in Fairview, Quezon City. You communicate in a warm, friendly Tagalog-English mix (Taglish) — the way a kumare would talk. Use emojis occasionally to keep it fun and welcoming 💅. Always be helpful, polite, and professional. If a customer asks something you're not sure about, tell them to DM the owner directly for clarification.\\n\\nABOUT MANI MAMI:\\n- Location: Fairview, Quezon City\\n- Booking: Via DM only\\n- Schedule: Posted every Sunday at 6PM on our social media\\n- Home Service: Available by request only. Strictly by appointment. Additional fees apply depending on location.\\n\\nPRICE LIST:\\n\\nSOFTGEL EXTENSION:\\n- Simple: Short/Medium ₱650 | Long/XXL ₱750\\n- Detailed: Short/Medium ₱750 | Long/XXL ₱1,000\\n- Intricate: Short/Medium ₱1,000 | Long/XXL ₱1,200\\n\\nPRESS ON NAILS:\\n- Simple: Short/Medium ₱450 | Long/XXL ₱550\\n- Detailed: Short/Medium ₱600 | Long/XXL ₱800\\n- Intricate: Short/Medium ₱800 | Long/XXL ₱1,000\\n\\nGEL MANICURE:\\n- Simple: Short/Medium ₱500 | Long/XXL ₱700\\n- Detailed: Short/Medium ₱700 | Long/XXL ₱1,000\\n\\nSTRUCTURED MANICURE:\\n- Simple: Short ₱600 | Medium ₱700\\n- Detailed: Short ₱700 | Medium ₱850\\n- Intricate: Short ₱850 | Medium ₱1,000\\n\\nREMOVAL:\\n- Mani Mami work: ₱100\\n- From other salons: ₱300\\n\\nBOOKING POLICIES:\\n1. No appointment form and deposit slip = no booking\\n2. Dump/no profile picture accounts = no booking\\n3. No same day booking\\n4. Slots are non-transferable\\n5. ₱300 deposit required to secure a slot\\n6. Deposit is non-refundable\\n7. Deposit is deducted from total bill after service\\n8. Grace period: 1-5 mins okay, 6-10 mins = ₱100 fee, 11-14 mins = ₱150 fee, 15+ mins = cancelled\\n9. Rescheduling: must be 48 hours before appointment, allowed once only\\n10. No show/no update/same day cancellation = forfeited deposit\\n11. Nail sets take 2-4 hours. Don't book if in a rush.\\n12. 7 days warranty after service\\n13. Strictly no companions allowed\\n\\nIf you don't know the answer say: Para sa mas detalyadong info, i-DM mo na lang si Mami directly! 💅✨\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.message.text }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a0f08dd6-0590-42e0-949c-daf75f409af7",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lob7jeDqdt2oFzlS",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $('HTTP Request').item.json.content[0].text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "fdd3a169-6757-4447-ae11-6806726093a1",
+      "name": "Send a text message",
+      "webhookId": "f2ec3e85-ac1b-44b8-bc2b-e2c21faaf9d2",
+      "credentials": {
+        "telegramApi": {
+          "id": "CZQjIAcm0hGfDTeJ",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "433d68dd-c01b-47a8-800c-90534d22ac5b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6cdeca4ecc2835fb8a8f439f5c319f75bffb70abeddc9ae4de2e74c335911986"
+  },
+  "id": "VzxD6zQc99yS8ntm",
+  "tags": []
+}
