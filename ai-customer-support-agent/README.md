@@ -1,34 +1,33 @@
-# AI Lead Capture Bot
+# AI Customer Support Agent
 
-AI-powered lead capture and qualification workflow built with n8n, Claude, Airtable, and email automation.
+AI-powered customer support assistant built with n8n, Telegram, and Anthropic Claude.
 
 ## Problem
 
-Businesses often receive inbound leads through forms or webhooks, but manually reviewing, qualifying, summarizing, and notifying the sales team creates unnecessary work.
+Small businesses often spend time repeatedly answering the same questions about pricing, booking policies, services, and availability.
 
 ## Solution
 
 This workflow automatically:
 
-- receives a new lead through a webhook
-- sends the lead information to Claude
-- summarizes and classifies the lead as Hot, Warm, or Cold
-- stores the structured lead information in Airtable
-- sends an email notification to the business owner
+- receives customer messages through Telegram
+- sends the message to Claude
+- generates a business-specific response
+- returns the response directly to the customer
+
+The assistant follows predefined business information and policies to provide consistent answers.
 
 ## Workflow
 
-Webhook  
-→ Claude Lead Qualification  
-→ Airtable Lead Record  
-→ Email Notification
+Telegram Message  
+→ Claude Support Assistant  
+→ Telegram Response
 
 ## Tech Stack
 
 - n8n
 - Anthropic Claude
-- Airtable
-- SMTP / Email
+- Telegram Bot API
 - REST API
 - JSON
 
@@ -36,19 +35,18 @@ Webhook
 
 The sanitized n8n workflow export is available here:
 
-`ai-lead-capture-bot-workflow.json`
+`ai-customer-support-agent-workflow.json`
 
 ## Security
 
 The public workflow export has been sanitized and does not contain:
 
 - API keys
+- Telegram bot tokens
 - credential bindings
-- private webhook URLs
-- Airtable account IDs
-- personal email addresses
+- private webhook IDs
 - production secrets
 
 ## Status
 
-Portfolio prototype demonstrating AI-assisted lead qualification and business workflow automation.
+Portfolio prototype demonstrating conversational AI and customer support automation.
