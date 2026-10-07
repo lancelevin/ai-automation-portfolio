@@ -36,7 +36,7 @@ Webhook
 
 The sanitized n8n workflow export is available here:
 
-`ai-lead-capture-bot-workflow.json`
+`workflow.json`
 
 ## Security
 
