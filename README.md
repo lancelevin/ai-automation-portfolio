@@ -89,11 +89,6 @@ Telegram → Claude → Telegram Response
 - Human-in-the-Loop Systems
 - Business Process Automation
 
----
-
-## Architecture Diagram
-
-![RAG Support Assistant Architecture](./docs/architecture.png)
 
 ---
 
