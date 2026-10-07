@@ -1,0 +1,375 @@
+{
+  "name": "RAG Support Assistant - Knowledge Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "YOUR_APPROVED_KNOWLEDGE_FOLDER",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/YOUR_GOOGLE_DRIVE_FOLDER_ID"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3ab0b4bf-5004-4c86-8547-1eccb24fde1a",
+      "name": "Google Drive Trigger - New File"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "id": "6fa8a6eb-0399-4ed6-a158-b273bf8a2b57",
+      "name": "Download File"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "id": "c412332c-bb90-40bb-a6d9-c0a503114420",
+      "name": "Extract PDF Text"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e5015c76-3731-4a44-abdd-eb2fb85b8e68",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "0a2b57a8-9cc5-4b23-93c2-f71ecc084bf8",
+              "name": "source_file",
+              "value": "={{ $('Google Drive Trigger - New File').item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "c8c534e0-8f63-4b95-86d7-58b288a7ea16",
+              "name": "google_drive_file_id",
+              "value": "={{ $('Google Drive Trigger - New File').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "8f9cc72f-fa9d-4d2a-acc3-b5ceb2cab45f",
+              "name": "document_title",
+              "value": "={{ $('Google Drive Trigger - New File').item.json.name.replace(/\\.[^/.]+$/, '') }}",
+              "type": "string"
+            },
+            {
+              "id": "722b3cc5-2e9d-4791-bbda-05b7663eea35",
+              "name": "document_type",
+              "value": "policy",
+              "type": "string"
+            },
+            {
+              "id": "746866dc-d09d-461b-ad8d-5eebec9f0d70",
+              "name": "domain",
+              "value": "hr",
+              "type": "string"
+            },
+            {
+              "id": "fd3b5bcf-e66d-4975-b7d2-d6134510df29",
+              "name": "source_revision",
+              "value": "={{ $('Google Drive Trigger - New File').item.json.version || 'current' }}",
+              "type": "string"
+            },
+            {
+              "id": "811591ca-54a7-424c-87b1-abb24f2ed6dd",
+              "name": "source_modified_at",
+              "value": "={{ $('Google Drive Trigger - New File').item.json.modifiedTime || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "8dfaca4f-21e3-42f2-8db1-4e4a68d627a3",
+              "name": "source_url",
+              "value": "={{ $('Google Drive Trigger - New File').item.json.webViewLink || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "469d8c96-ee96-4aef-aae6-c0db09fb82ea",
+              "name": "mime_type",
+              "value": "={{ $('Google Drive Trigger - New File').item.json.mimeType || 'application/pdf' }}",
+              "type": "string"
+            },
+            {
+              "id": "d3c9eb69-303c-4657-9344-2cd6f3cbac2b",
+              "name": "source_provider",
+              "value": "google_drive",
+              "type": "string"
+            },
+            {
+              "id": "eabf62a2-cdf7-480a-a5dc-c9dc4ea42044",
+              "name": "source_folder",
+              "value": "YOUR_APPROVED_KNOWLEDGE_FOLDER",
+              "type": "string"
+            },
+            {
+              "id": "28d3184d-3394-4b47-9458-57daaa0d0cf5",
+              "name": "ingested_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "ec9c607b-b016-4703-9c21-fd2426ad4db6",
+              "name": "document_version",
+              "value": "2026",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        0
+      ],
+      "id": "11a2028e-66bb-4906-8b9d-ae191991d870",
+      "name": "Normalize Document Metadata"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "YOUR_QDRANT_COLLECTION",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        1008,
+        0
+      ],
+      "id": "da0917d1-d73a-4cc9-bca6-7b9000d6079a",
+      "name": "Qdrant Vector Store - Insert"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-embedding-2"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        928,
+        240
+      ],
+      "id": "b28385ac-b66e-43e5-9206-852a2f46f24a",
+      "name": "Embeddings Google Gemini"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "source_file",
+                "value": "={{ $json.source_file }}"
+              },
+              {
+                "name": "google_drive_file_id",
+                "value": "={{ $json.google_drive_file_id }}"
+              },
+              {
+                "name": "document_title",
+                "value": "={{ $json.document_title }}"
+              },
+              {
+                "name": "document_type",
+                "value": "={{ $json.document_type }}"
+              },
+              {
+                "name": "domain",
+                "value": "={{ $json.domain }}"
+              },
+              {
+                "name": "source_revision",
+                "value": "={{ $json.source_revision }}"
+              },
+              {
+                "name": "source_modified_at",
+                "value": "={{ $json.source_modified_at }}"
+              },
+              {
+                "name": "source_url",
+                "value": "={{ $json.source_url }}"
+              },
+              {
+                "name": "mime_type",
+                "value": "={{ $json.mime_type }}"
+              },
+              {
+                "name": "source_provider",
+                "value": "={{ $json.source_provider }}"
+              },
+              {
+                "name": "source_folder",
+                "value": "={{ $json.source_folder }}"
+              },
+              {
+                "name": "ingested_at",
+                "value": "={{ $json.ingested_at }}"
+              },
+              {
+                "name": "document_version",
+                "value": "={{ $json.document_version }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        240
+      ],
+      "id": "e2d280e5-3b04-4a8f-95bf-6dd3118a8371",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkSize": 800,
+        "chunkOverlap": 150,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        448
+      ],
+      "id": "9e90839c-b974-462b-8419-d89a8ad4471b",
+      "name": "Recursive Character Text Splitter"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Drive Trigger - New File": {
+      "main": [
+        [
+          {
+            "node": "Download File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Normalize Document Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Document Metadata": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store - Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store - Insert",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Qdrant Vector Store - Insert",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

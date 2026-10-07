@@ -1,0 +1,937 @@
+{
+  "name": "RAG Support Assistant - Slack RAG Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": [
+          "app_mention"
+        ],
+        "watchWorkspace": true,
+        "options": {
+          "resolveIds": false
+        }
+      },
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1776,
+        160
+      ],
+      "id": "ef318e62-d783-4033-8c71-ee1e1441af7f",
+      "name": "Slack Trigger - App Mention"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ab679181-caf7-4724-a837-ee27c557d2a2",
+              "name": "question",
+              "value": "={{ (($json.event && $json.event.text) || $json.text || '').replace(/<@[^>]+>/g, '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "9ca895b4-e00f-45a5-9bea-3cb38b4b9bd3",
+              "name": "channel_id",
+              "value": "={{ ($json.event && ($json.event.channel || $json.event.channel_id)) || $json.channel || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "9ff46120-b8f4-4156-814e-3ec89a8769fb",
+              "name": "thread_ts",
+              "value": "={{ ($json.event && ($json.event.thread_ts || $json.event.ts)) || $json.thread_ts || $json.ts || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "19d781fc-6cd2-4624-8132-f5c841e83df3",
+              "name": "user_id",
+              "value": "={{ ($json.event && $json.event.user) || $json.user || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1552,
+        160
+      ],
+      "id": "9b165cf7-4b7b-43a0-91d5-92cfcd536dda",
+      "name": "Normalize Slack Input"
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "YOUR_QDRANT_COLLECTION",
+          "mode": "id"
+        },
+        "prompt": "={{ $json.search_question }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        16,
+        256
+      ],
+      "id": "e4d072e6-e43b-4611-909f-e10996f0aa5b",
+      "name": "Qdrant Vector Store - Search"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-embedding-2"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        80,
+        496
+      ],
+      "id": "7b6f7ddb-807e-420f-a915-d0161cfca289",
+      "name": "Embeddings Google Gemini"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.all();\nconst slack = $('Use Rewritten Retrieval Question').first().json;\n\nconst chunks = [];\nconst sourceMap = new Map();\n\nfor (const item of input) {\n  const raw = item.json ?? {};\n  const doc = raw.document ?? raw;\n  const pageContent = doc.pageContent ?? raw.pageContent ?? doc.content ?? raw.content ?? '';\n  const metadata = doc.metadata ?? raw.metadata ?? {};\n  const score = raw.score ?? raw.similarityScore ?? doc.score ?? null;\n\n  if (!pageContent) continue;\n\n  chunks.push({\n    text: pageContent,\n    metadata,\n    score\n  });\n\n  const key =\n    metadata.google_drive_file_id ??\n    metadata.source_file ??\n    metadata.document_title ??\n    JSON.stringify(metadata);\n\n  if (!sourceMap.has(key)) {\n    sourceMap.set(key, {\n      document_title: metadata.document_title ?? metadata.source_file ?? 'Unknown document',\n      document_version: metadata.document_version ?? '',\n      source_file: metadata.source_file ?? '',\n      source_url: metadata.source_url ?? '',\n      domain: metadata.domain ?? '',\n      document_type: metadata.document_type ?? ''\n    });\n  }\n}\n\nconst context = chunks.map((chunk, index) => {\n  const m = chunk.metadata ?? {};\n  return [\n    `[CHUNK ${index + 1}]`,\n    chunk.text,\n    `SOURCE_TITLE: ${m.document_title ?? m.source_file ?? 'Unknown document'}`,\n    `SOURCE_FILE: ${m.source_file ?? ''}`,\n    `DOCUMENT_VERSION: ${m.document_version ?? ''}`,\n    `SOURCE_URL: ${m.source_url ?? ''}`,\n    chunk.score !== null ? `SIMILARITY_SCORE: ${chunk.score}` : ''\n  ].filter(Boolean).join('\\n');\n}).join('\\n\\n---\\n\\n');\n\nreturn [{\n  json: {\n    ...slack,\n    retrieved_count: chunks.length,\n    context,\n    sources: Array.from(sourceMap.values())\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        256
+      ],
+      "id": "3f2994bf-5afc-4aee-b4ba-6edba1732ecc",
+      "name": "Build Retrieval Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are the Northstar Business Knowledge Assistant.\n\nYour job is to answer the user's question using ONLY the retrieved business knowledge shown below.\n\nRULES:\n1. Do not use outside knowledge for company-specific facts.\n2. Use the Slack thread only to understand conversational references.\n3. Company facts must be supported by RETRIEVED BUSINESS KNOWLEDGE.\n4. If the retrieved context directly supports the answer, return status \"ANSWER\".\n5. If the context does not directly support the answer, is ambiguous, or is insufficient, return status \"ESCALATE\".\n6. Never invent policies, procedures, benefits, rules, versions, filenames, URLs, or citations.\n7. Keep answers clear and concise.\n8. Do not add a Sources section yourself. The workflow will append verified source metadata.\n9. Return ONLY valid JSON. No markdown fences and no extra commentary.\n\nReturn this exact JSON shape:\n{\n  \"status\": \"ANSWER\" or \"ESCALATE\",\n  \"answer\": \"Concise answer when supported, otherwise an empty string\",\n  \"reason\": \"Short internal reason for the decision\"\n}\n\nCURRENT USER MESSAGE:\n{{ $json.question }}\n\nYOUR_SLACK_CHANNEL_ID-AWARE RETRIEVAL QUESTION:\n{{ $json.search_question }}\n\nRECENT SLACK THREAD:\n{{ $json.thread_context }}\n\nRETRIEVED BUSINESS KNOWLEDGE:\n{{ $json.context }}\n",
+        "needsFallback": true,
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        496,
+        256
+      ],
+      "id": "85a42d25-894a-4ad8-83df-218a12e747b8",
+      "name": "Answerability + Answer",
+      "retryOnFail": true,
+      "maxTries": 4,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.8-flash",
+        "options": {
+          "maxOutputTokens": 1024,
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        496,
+        496
+      ],
+      "id": "e7614bc3-c8a8-445d-93b0-e432d0324c82",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Build Retrieval Context').first().json;\n\nlet raw = $json.text ?? $json.output ?? $json.response ?? $json.content ?? '';\nif (typeof raw !== 'string') raw = JSON.stringify(raw);\n\nlet cleaned = raw.trim()\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (error) {\n  parsed = {\n    status: 'ESCALATE',\n    answer: '',\n    reason: 'The answer model did not return valid structured JSON.'\n  };\n}\n\nconst status = String(parsed.status ?? 'ESCALATE').toUpperCase() === 'ANSWER'\n  ? 'ANSWER'\n  : 'ESCALATE';\n\nconst answer = typeof parsed.answer === 'string' ? parsed.answer.trim() : '';\nconst reason = typeof parsed.reason === 'string'\n  ? parsed.reason.trim()\n  : 'The approved knowledge base did not provide enough direct support.';\n\nconst sources = Array.isArray(base.sources) ? base.sources : [];\n\nconst sourceLines = sources\n  .map((s) => {\n    let label = `• ${s.document_title || s.source_file || 'Unknown document'}`;\n    if (s.document_version) label += ` — Version ${s.document_version}`;\n    if (s.source_file && s.source_file !== s.document_title) label += ` (${s.source_file})`;\n    if (s.source_url) label += `\\n  ${s.source_url}`;\n    return label;\n  })\n  .join('\\n');\n\nconst slackText = status === 'ANSWER'\n  ? `${answer}${sourceLines ? `\\n\\n*Sources:*\\n${sourceLines}` : ''}`\n  : `I couldn't find enough information in the approved business knowledge base to answer this confidently. This request needs human review.`;\n\nreturn [{\n  json: {\n    ...base,\n    status,\n    answer,\n    reason,\n    slack_text: slackText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        256
+      ],
+      "id": "a22c0cc2-cda2-4753-8fc5-5f47c79a832f",
+      "name": "Parse Answer Decision"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "606bab50-e4fd-420a-b352-8149421765a5",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ANSWER",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1072,
+        256
+      ],
+      "id": "cc2b20ba-6328-42fb-a4d2-bff23ee2848b",
+      "name": "Knowledge Supported?"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel_id }}",
+          "mode": "id"
+        },
+        "text": "={{ $json.slack_text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          },
+          "mrkdwn": true,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        1296,
+        -320
+      ],
+      "id": "ec9c47c7-6741-42b3-b8ce-82f3f6be739a",
+      "name": "Slack - Send Answer"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0cf64d7c-9605-4f76-8e8a-195a07004a31",
+              "name": "question",
+              "value": "={{ $json.question }}",
+              "type": "string"
+            },
+            {
+              "id": "f4b2164e-21ce-4121-893f-ab8aa9872735",
+              "name": "user_id",
+              "value": "={{ $json.user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "93872a3e-2220-400e-9a78-1c51c0ca24fd",
+              "name": "channel_id",
+              "value": "={{ $json.channel_id }}",
+              "type": "string"
+            },
+            {
+              "id": "e6b5bd3c-660a-4914-b157-26401c262685",
+              "name": "thread_ts",
+              "value": "={{ $json.thread_ts }}",
+              "type": "string"
+            },
+            {
+              "id": "c4f7a12b-1dd4-4408-85b6-e74bb82175a0",
+              "name": "reason",
+              "value": "={{ $json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "f4fae7f8-4c76-48d0-9a0e-b6566106dd23",
+              "name": "retrieved_context",
+              "value": "={{ $json.context }}",
+              "type": "string"
+            },
+            {
+              "id": "415a6872-d1b2-4496-aff9-421eff17a657",
+              "name": "source_document",
+              "value": "={{ $json.sources?.[0]?.source_file || $json.sources?.[0]?.document_title || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "2e2768f9-b3b4-4cb6-a088-c7f74a2463ce",
+              "name": "status",
+              "value": "pending_human_review",
+              "type": "string"
+            },
+            {
+              "id": "02b93536-a752-4fdd-ab9d-db29730e6ca3",
+              "name": "created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1296,
+        352
+      ],
+      "id": "68553827-7a4d-42ca-91b6-54d9a07004d1",
+      "name": "Prepare Human Escalation"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel_id }}",
+          "mode": "id"
+        },
+        "text": "={{ `I couldn’t find enough reliable information in the approved knowledge base, so I’m escalating this request.\\n\\nHi <@HUMAN_REVIEWER_USER_ID>, could you help our user here?\\n\\n*Case number:* \\`${$json.case_id}\\`` }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          },
+          "mrkdwn": true,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        1968,
+        352
+      ],
+      "id": "ce9051cf-51a6-4bc0-96a5-f3d7446fd154",
+      "name": "Slack - Human Review Notice"
+    },
+    {
+      "parameters": {
+        "url": "https://slack.com/api/conversations.replies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "channel",
+              "value": "={{ $json.channel_id }}"
+            },
+            {
+              "name": "ts",
+              "value": "={{ $json.thread_ts }}"
+            },
+            {
+              "name": "limit",
+              "value": "30"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1104,
+        160
+      ],
+      "id": "91381320-de40-4568-8919-cf1b6126f620",
+      "name": "Fetch Slack Thread Context"
+    },
+    {
+      "parameters": {
+        "jsCode": "const slack = $('Check Escalation State').first().json;\nconst response = $input.first().json ?? {};\n\nif (response.ok === false) {\n  throw new Error(`Slack conversations.replies failed: ${response.error || 'unknown_error'}`);\n}\n\nconst messages = Array.isArray(response.messages) ? response.messages : [];\n\nconst cleaned = messages.slice(-12).map((m) => {\n  const text = String(m.text || '')\n    .replace(/<@[^>]+>/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  const role = m.bot_id || m.subtype === 'bot_message' ? 'ASSISTANT' : 'USER';\n\n  return {\n    role,\n    text,\n    ts: String(m.ts || '')\n  };\n}).filter(m => m.text);\n\nconst thread_context = cleaned\n  .map(m => `${m.role}: ${m.text}`)\n  .join('\\n');\n\nreturn [{\n  json: {\n    ...slack,\n    thread_context: thread_context || 'No previous thread context available.',\n    thread_message_count: cleaned.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        160
+      ],
+      "id": "e78fd565-7f2f-48a7-ac4d-bd6e265332f2",
+      "name": "Build Slack Thread Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You rewrite Slack follow-up messages into ONE standalone search question for an internal company knowledge base.\n\nUse the Slack thread only to understand what the user is referring to.\nDo NOT answer the user.\nDo NOT invent company facts.\nDo NOT add commentary.\nIf the latest message is already a clear standalone question, return it unchanged.\nIf it is a follow-up such as \"what else?\", \"tell me more\", \"what about that?\", or uses pronouns like \"it/that/they\", rewrite it so the topic is explicit.\n\nSLACK THREAD:\n{{ $json.thread_context }}\n\nLATEST USER MESSAGE:\n{{ $json.question }}\n\nReturn ONLY the standalone retrieval question.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        -432,
+        256
+      ],
+      "id": "c9c9becd-dfa4-4c2d-bc0f-70c1e88b896b",
+      "name": "Anthropic - Rewrite Question for Retrieval",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "claude-sonnet-5-5"
+        },
+        "options": {
+          "maxTokensToSample": 300
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -432,
+        496
+      ],
+      "id": "7da11569-380d-4d55-ae66-87263a63203d",
+      "name": "Anthropic Chat Model - Context Rewriter"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Build Slack Thread Context').first().json;\n\nlet raw = $json.text ?? $json.output ?? $json.response ?? $json.content ?? '';\nif (typeof raw !== 'string') raw = JSON.stringify(raw);\n\nconst search_question = raw\n  .trim()\n  .replace(/^```(?:text)?\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .replace(/^[\"']|[\"']$/g, '')\n  .trim();\n\nreturn [{\n  json: {\n    ...base,\n    search_question: search_question || base.question\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        256
+      ],
+      "id": "41955d0f-6db0-4dab-a6d2-dc7052865ef4",
+      "name": "Use Rewritten Retrieval Question"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json ?? {};\n\nconst caseText = item.existing_case_id\n  ? ` under case \\`${item.existing_case_id}\\``\n  : '';\n\nreturn [{\n  json: {\n    ...item,\n    followup_message:\n      `This request is already with our Service Desk${caseText}.\\n\\n` +\n      `Hi <@HUMAN_REVIEWER_USER_ID>, could you continue assisting our user here?`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -128
+      ],
+      "id": "b3df2299-4800-4af3-997b-460ccf45d8da",
+      "name": "Prepare Existing Escalation Follow-up"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel_id }}",
+          "mode": "id"
+        },
+        "text": "={{ $json.followup_message }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          },
+          "mrkdwn": true,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        464,
+        -128
+      ],
+      "id": "241a2357-aa46-40ac-95c0-9c5690e55830",
+      "name": "Slack - Existing Escalation Follow-up"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "YOUR_HUMAN_ESCALATION_WORKFLOW_ID",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/YOUR_HUMAN_ESCALATION_WORKFLOW_ID",
+          "cachedResultName": "04 - Business Knowledge V3 - Human Escalation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1520,
+        352
+      ],
+      "id": "34f63507-faab-4428-886c-df004540ecfa",
+      "name": "Create Human Escalation Case"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json ?? {};\n\nconst store = $getWorkflowStaticData('global');\nstore.northstarEscalations = store.northstarEscalations || {};\n\nconst session_id = `${input.channel_id || 'no-channel'}:${input.thread_ts || 'no-thread'}`;\nconst existing = store.northstarEscalations[session_id] || null;\n\nreturn [{\n  json: {\n    ...input,\n    session_id,\n    already_escalated: Boolean(existing),\n    existing_case_id: existing?.case_id || '',\n    escalated_at: existing?.escalated_at || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        160
+      ],
+      "id": "d0bd1e06-8aeb-434b-b211-0a1e09a9e838",
+      "name": "Check Escalation State"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json ?? {};\n\nconst store = $getWorkflowStaticData('global');\nstore.northstarEscalations = store.northstarEscalations || {};\n\nconst session_id = `${item.channel_id || 'no-channel'}:${item.thread_ts || 'no-thread'}`;\n\nif (!item.case_id) {\n  throw new Error('Human escalation workflow did not return case_id.');\n}\n\nstore.northstarEscalations[session_id] = {\n  case_id: String(item.case_id),\n  escalated_at: new Date().toISOString()\n};\n\nreturn [{\n  json: {\n    ...item,\n    session_id,\n    escalation_state_saved: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        352
+      ],
+      "id": "664aaea2-125e-4caf-9dee-824c2c405153",
+      "name": "Mark Thread Escalated"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You classify the latest Slack message in a thread that already has an open Service Desk escalation.\n\nReturn exactly one label:\nCASE_FOLLOWUP\nor\nNEW_TOPIC\n\nUse CASE_FOLLOWUP when the latest message is about the existing escalation/case, for example:\n- \"any update?\"\n- \"follow up please\"\n- \"no answer yet?\"\n- \"what is the status?\"\n- \"can someone help with this case?\"\n- \"is Barbara there?\"\n\nUse NEW_TOPIC when the latest message asks a separate business-knowledge question that can be handled independently, for example:\n- \"while we wait, what are my leave benefits?\"\n- \"do we have sick leave?\"\n- \"what are our company holidays?\"\n- \"what is the expense policy?\"\n\nDo not answer the user.\nDo not explain your choice.\nReturn only CASE_FOLLOWUP or NEW_TOPIC.\n\nRECENT SLACK THREAD:\n{{ $json.thread_context }}\n\nLATEST USER MESSAGE:\n{{ $json.question }}\n",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        -432,
+        -32
+      ],
+      "id": "829c7631-2b38-467d-bee8-6436834853e5",
+      "name": "Anthropic - Classify Escalated Thread Message",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Build Slack Thread Context').first().json;\n\nlet raw = $json.text ?? $json.output ?? $json.response ?? $json.content ?? '';\nif (typeof raw !== 'string') raw = JSON.stringify(raw);\n\nconst cleaned = raw\n  .trim()\n  .replace(/^```(?:text)?\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .replace(/[^A-Z_]/gi, '')\n  .toUpperCase();\n\nconst escalation_intent =\n  cleaned === 'CASE_FOLLOWUP'\n    ? 'CASE_FOLLOWUP'\n    : 'NEW_TOPIC';\n\nreturn [{\n  json: {\n    ...base,\n    escalation_intent\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        -32
+      ],
+      "id": "7978f704-5475-470a-b3f9-b765f509cc15",
+      "name": "Parse Escalated Thread Intent"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e50ca74c-d074-45f9-a3d1-5bfbfbc7945d",
+              "leftValue": "={{ $json.escalation_intent }}",
+              "rightValue": "CASE_FOLLOWUP",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        16,
+        -32
+      ],
+      "id": "8e64fcfa-3815-4606-bedb-2ad182ed1c84",
+      "name": "Existing Case Follow-up?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0efb5f7a-678f-4d2a-8198-fa67d66c19e5",
+              "leftValue": "={{ $json.already_escalated }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -656,
+        160
+      ],
+      "id": "a860ef93-0e80-4285-b697-bf8484b656bd",
+      "name": "Thread Has Open Escalation?"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-5",
+          "cachedResultName": "Claude Sonnet 5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        656,
+        512
+      ],
+      "id": "6c603bde-72a3-439b-9de3-f90e0f938d3d",
+      "name": "Anthropic Chat Model"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Slack Trigger - App Mention": {
+      "main": [
+        [
+          {
+            "node": "Normalize Slack Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Slack Input": {
+      "main": [
+        [
+          {
+            "node": "Check Escalation State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store - Search",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Vector Store - Search": {
+      "main": [
+        [
+          {
+            "node": "Build Retrieval Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Retrieval Context": {
+      "main": [
+        [
+          {
+            "node": "Answerability + Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Answerability + Answer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answerability + Answer": {
+      "main": [
+        [
+          {
+            "node": "Parse Answer Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Answer Decision": {
+      "main": [
+        [
+          {
+            "node": "Knowledge Supported?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Supported?": {
+      "main": [
+        [
+          {
+            "node": "Slack - Send Answer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Human Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Human Escalation": {
+      "main": [
+        [
+          {
+            "node": "Create Human Escalation Case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Slack Thread Context": {
+      "main": [
+        [
+          {
+            "node": "Build Slack Thread Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slack Thread Context": {
+      "main": [
+        [
+          {
+            "node": "Thread Has Open Escalation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic - Rewrite Question for Retrieval": {
+      "main": [
+        [
+          {
+            "node": "Use Rewritten Retrieval Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model - Context Rewriter": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Anthropic - Rewrite Question for Retrieval",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Anthropic - Classify Escalated Thread Message",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Rewritten Retrieval Question": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store - Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Existing Escalation Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Slack - Existing Escalation Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Human Escalation Case": {
+      "main": [
+        [
+          {
+            "node": "Mark Thread Escalated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Escalation State": {
+      "main": [
+        [
+          {
+            "node": "Fetch Slack Thread Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Thread Escalated": {
+      "main": [
+        [
+          {
+            "node": "Slack - Human Review Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thread Has Open Escalation?": {
+      "main": [
+        [
+          {
+            "node": "Anthropic - Classify Escalated Thread Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anthropic - Rewrite Question for Retrieval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic - Classify Escalated Thread Message": {
+      "main": [
+        [
+          {
+            "node": "Parse Escalated Thread Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Escalated Thread Intent": {
+      "main": [
+        [
+          {
+            "node": "Existing Case Follow-up?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existing Case Follow-up?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Existing Escalation Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anthropic - Rewrite Question for Retrieval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Answerability + Answer",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

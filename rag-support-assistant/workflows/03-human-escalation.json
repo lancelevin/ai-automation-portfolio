@@ -1,0 +1,211 @@
+{
+  "name": "RAG Support Assistant - Human Escalation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "58f6a6dd-c464-43fb-a737-73fe736c75ce",
+      "name": "Manual Trigger - Test Escalation",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        544,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e190cb35-b2c0-46e4-b69e-9a7a3b1eaa11",
+              "name": "question",
+              "value": "Does Northstar reimburse Netflix subscriptions?",
+              "type": "string"
+            },
+            {
+              "id": "7d0c8e6a-f842-40ca-bd3c-149553eb2f2a",
+              "name": "user_id",
+              "value": "U_TEST_EMPLOYEE",
+              "type": "string"
+            },
+            {
+              "id": "630fafb4-4f89-481c-bf0a-3e947a9e8485",
+              "name": "channel_id",
+              "value": "C_TEST_CHANNEL",
+              "type": "string"
+            },
+            {
+              "id": "88cc0f05-8264-446c-9d16-e3d918938f95",
+              "name": "thread_ts",
+              "value": "1790681478.476739",
+              "type": "string"
+            },
+            {
+              "id": "24dfdcf5-3a6f-4fc9-b9c6-dd9e9df4873d",
+              "name": "reason",
+              "value": "The approved knowledge base does not contain enough direct evidence to answer this question.",
+              "type": "string"
+            },
+            {
+              "id": "086fb481-241d-4c95-81f8-a0910c445a3a",
+              "name": "retrieved_context",
+              "value": "No retrieved policy chunk directly supports reimbursement for personal streaming subscriptions.",
+              "type": "string"
+            },
+            {
+              "id": "3f74a437-67ae-45a2-a05c-c2bb5ca3dc73",
+              "name": "source_document",
+              "value": "employee-handbook.pdf",
+              "type": "string"
+            },
+            {
+              "id": "1923f7b5-ceda-4d0d-971b-9737036c72ab",
+              "name": "status",
+              "value": "pending_human_review",
+              "type": "string"
+            },
+            {
+              "id": "91565748-aaf1-4595-9080-7e8dcc6c6713",
+              "name": "created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f884b004-f691-4bf1-a0e3-fd7f9e4a1111",
+      "name": "Set Test Escalation Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        784,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "4ddb5fa6-05e8-4b14-9429-739b456b12c5",
+      "name": "When Called by Slack Assistant",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        784,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json ?? {};\n\nconst sources = Array.isArray(j.sources) ? j.sources : [];\n\nconst sourceDocument = j.source_document\n  ?? sources\n    .map((s) => s.document_title || s.source_file)\n    .filter(Boolean)\n    .join(', ')\n  ?? '';\n\nconst channelId = String(j.channel_id ?? j.slack_channel_id ?? '');\nconst threadTs = String(j.thread_ts ?? j.slack_thread_ts ?? '');\nconst safeThread = threadTs.replace(/[^0-9]/g, '');\n\nconst caseId = j.case_id\n  ?? `ESC-${channelId || 'NOCHANNEL'}-${safeThread || Date.now()}`;\n\nconst incomingStatus = String(j.status ?? '').toLowerCase();\nconst status = incomingStatus === 'resolved'\n  ? 'Resolved'\n  : incomingStatus === 'in_review' || incomingStatus === 'in review'\n    ? 'In Review'\n    : 'Pending';\n\nreturn [{\n  json: {\n    case_id: caseId,\n    question: String(j.question ?? ''),\n    slack_user_id: String(j.user_id ?? j.slack_user_id ?? ''),\n    channel_id: channelId,\n    thread_ts: threadTs,\n    escalation_reason: String(j.reason ?? j.escalation_reason ?? 'Insufficient approved knowledge for a grounded answer.'),\n    retrieved_context: String(j.retrieved_context ?? j.context ?? ''),\n    source_document: String(sourceDocument || ''),\n    status,\n    human_answer: String(j.human_answer ?? ''),\n    created_at: String(j.created_at ?? new Date().toISOString()),\n    resolved_at: j.resolved_at ? String(j.resolved_at) : ''\n  }\n}];"
+      },
+      "id": "b650a6af-ce9d-4e6f-8c22-d4b410172c85",
+      "name": "Normalize Escalation Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const escalation = $('Normalize Escalation Record').first().json;\nconst airtable = $input.first().json ?? {};\n\nreturn [{\n  json: {\n    success: true,\n    case_id: escalation.case_id,\n    airtable_record_id: airtable.id ?? '',\n    status: escalation.status,\n    question: escalation.question,\n    channel_id: escalation.channel_id,\n    thread_ts: escalation.thread_ts,\n    message: `Escalation ${escalation.case_id} was logged for human review.`\n  }\n}];"
+      },
+      "id": "912aad45-72ad-4786-bf9a-cb5d1389dad7",
+      "name": "Return Escalation Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/YOUR_AIRTABLE_BASE_ID/Escalations",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"fields\": {\n    \"Case ID\": $json.case_id,\n    \"Question\": $json.question,\n    \"Slack User ID\": $json.slack_user_id,\n    \"Channel ID\": $json.channel_id,\n    \"Thread Timestamp\": $json.thread_ts,\n    \"Escalation Reason\": $json.escalation_reason,\n    \"Retrieved Context\": $json.retrieved_context,\n    \"Source Document\": $json.source_document,\n    \"Status\": $json.status,\n    \"Human Answer\": $json.human_answer,\n    \"Created At\": $json.created_at\n  }\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1312,
+        432
+      ],
+      "id": "a0f310fe-dde4-42a9-9fbe-6430c5190980",
+      "name": "Airtable API - Create Escalation Record"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger - Test Escalation": {
+      "main": [
+        [
+          {
+            "node": "Set Test Escalation Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Test Escalation Payload": {
+      "main": [
+        [
+          {
+            "node": "Normalize Escalation Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called by Slack Assistant": {
+      "main": [
+        [
+          {
+            "node": "Normalize Escalation Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Escalation Record": {
+      "main": [
+        [
+          {
+            "node": "Airtable API - Create Escalation Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable API - Create Escalation Record": {
+      "main": [
+        [
+          {
+            "node": "Return Escalation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
