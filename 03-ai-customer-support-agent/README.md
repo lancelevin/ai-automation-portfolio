@@ -35,7 +35,7 @@ Telegram Message
 
 The sanitized n8n workflow export is available here:
 
-`ai-customer-support-agent-workflow.json`
+`workflow.json`
 
 ## Security
 
