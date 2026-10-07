@@ -91,6 +91,12 @@ Telegram → Claude → Telegram Response
 
 ---
 
+## Architecture Diagram
+
+![RAG Support Assistant Architecture](./docs/architecture.png)
+
+---
+
 ## Repository Structure
 
 ```text
