@@ -1,99 +1,129 @@
 # RAG Support Assistant
 
-AI-powered employee support assistant built with n8n, Retrieval-Augmented Generation (RAG), Slack, Airtable, Google Drive, Qdrant, Gemini, and Anthropic Claude.
+AI-powered internal support assistant built with n8n, Retrieval-Augmented Generation (RAG), Slack, Qdrant, Google Drive, Airtable, Google Gemini, and Anthropic Claude.
 
-The system answers employee questions using approved company knowledge, rewrites follow-up questions for better retrieval, returns grounded answers with source metadata, and escalates unsupported requests to a human reviewer.
+The system answers employee questions using approved internal knowledge, handles conversational follow-ups, provides source-backed responses, and escalates unsupported requests to a human reviewer.
+
+## Architecture Diagram
+
+![RAG Support Assistant Architecture](./docs/architecture.png)
+
+---
 
 ## Problem
 
-Internal teams often waste time answering repetitive questions that are already documented in company policies, handbooks, and operational guides.
+Internal teams often spend significant time repeatedly answering questions that are already documented in policies, employee handbooks, operational guides, and internal knowledge bases.
 
-This project automates first-line support while avoiding hallucinated company answers.
+A generic LLM can answer quickly, but relying on model knowledge alone creates a major problem:
+
+**Company-specific answers can be inaccurate or hallucinated.**
+
+---
 
 ## Solution
 
-The assistant:
+This project uses Retrieval-Augmented Generation to ground responses in approved internal documents.
 
-- ingests approved business documents
-- chunks and embeds document content
-- stores embeddings in a vector database
+The system:
+
+- monitors an approved Google Drive knowledge folder
+- extracts text from uploaded PDF documents
+- normalizes document metadata
+- splits documents into smaller chunks
+- generates embeddings
+- stores document vectors in Qdrant
 - receives employee questions through Slack
+- retrieves Slack thread context
 - rewrites conversational follow-ups into standalone retrieval questions
-- retrieves relevant business knowledge
-- generates grounded answers using only retrieved context
-- appends source metadata
-- escalates unsupported questions to a human
+- searches the vector database for relevant knowledge
+- generates answers using retrieved context
+- attaches source metadata to supported responses
+- escalates unsupported questions to a human reviewer
 - logs escalation cases in Airtable
+- tracks escalation state for Slack threads
+
+---
 
 ## Architecture
 
-The project is split into three modular n8n workflows.
+The solution is separated into three modular n8n workflows.
 
 ### 1. Knowledge Ingestion
 
 Google Drive  
-→ PDF extraction  
-→ metadata normalization  
-→ recursive text splitting  
-→ embeddings  
-→ Qdrant vector database
+→ Download Document  
+→ Extract PDF Text  
+→ Normalize Metadata  
+→ Recursive Text Splitting  
+→ Generate Embeddings  
+→ Store in Qdrant
 
-### 2. Slack RAG Assistant
+The ingestion workflow automatically processes new documents added to the approved knowledge folder.
 
-Slack mention  
-→ thread context retrieval  
-→ follow-up question rewriting  
-→ vector search  
-→ retrieval context assembly  
-→ LLM answerability check  
-→ grounded response
-
-### 3. Human Escalation
-
-Unsupported question  
-→ escalation payload  
-→ Airtable case creation  
-→ case tracking  
-→ Slack human review notification
-
-## Retrieval Strategy
-
-Documents are split using recursive character chunking.
+### Chunking Strategy
 
 - Chunk size: `800`
 - Chunk overlap: `150`
 
-Document metadata is preserved for retrieval and source attribution.
+Document metadata such as source file, document title, version, and source URL is retained for retrieval and source attribution.
+
+---
+
+### 2. Slack RAG Assistant
+
+Slack App Mention  
+→ Normalize Message  
+→ Retrieve Slack Thread Context  
+→ Rewrite Follow-Up Question  
+→ Qdrant Vector Search  
+→ Build Retrieval Context  
+→ LLM Answerability Check  
+→ Grounded Answer or Escalation
+
+The workflow uses Slack thread context to understand conversational follow-ups and rewrites them into standalone retrieval questions before vector search.
+
+---
+
+### 3. Human Escalation
+
+Unsupported Question  
+→ Prepare Escalation Payload  
+→ Create Airtable Case  
+→ Save Escalation State  
+→ Notify Human Reviewer in Slack
+
+When the approved knowledge base does not contain sufficient evidence, the assistant does not fabricate an answer.
+
+Instead, the request is routed to a human reviewer and logged as an escalation case.
+
+---
 
 ## Hallucination Control
 
 The answer model is instructed to use only retrieved business knowledge for company-specific facts.
 
-If the retrieved context is insufficient, ambiguous, or unsupported, the workflow returns:
+If the retrieved context is:
 
-`ESCALATE`
+- insufficient
+- ambiguous
+- unsupported
+- unrelated to the question
 
-instead of generating an unsupported answer.
+the workflow escalates the request instead of generating an unsupported answer.
 
-## Conversation Handling
+This keeps humans involved when the AI does not have enough reliable information.
 
-Slack thread history is retrieved and used to understand conversational references.
+---
 
-Follow-up questions such as:
+## Human-in-the-Loop Design
 
-`What about sick leave?`
+Once a Slack thread has been escalated, the workflow tracks the escalation state.
 
-can be rewritten into standalone retrieval queries before vector search.
+Future messages in the same thread can be classified as either an existing case follow-up or a new business knowledge question.
 
-## Human Escalation
+This prevents an existing support case from being unnecessarily processed again as a new RAG request.
 
-When the RAG system cannot confidently answer a question:
-
-1. an escalation case is created
-2. the case is logged in Airtable
-3. the Slack thread is marked as escalated
-4. a human reviewer is notified
-5. follow-up messages related to the existing case are routed back to the human reviewer
+---
 
 ## Tech Stack
 
@@ -107,32 +137,61 @@ When the RAG system cannot confidently answer a question:
 - Airtable API
 - Google Drive
 - JavaScript
-- JSON
 - REST APIs
+- JSON
+
+---
 
 ## Workflow Files
 
-The sanitized n8n workflow exports are available in:
+Sanitized n8n workflow exports are available in the `workflows/` directory.
 
-`workflows/`
+### 01 — Knowledge Ingestion
 
-- `01-knowledge-ingestion.json`
-- `02-slack-rag-assistant.json`
-- `03-human-escalation.json`
+`workflows/01-knowledge-ingestion.json`
+
+Handles document ingestion, text extraction, chunking, embeddings, metadata, and vector storage.
+
+### 02 — Slack RAG Assistant
+
+`workflows/02-slack-rag-assistant.json`
+
+Handles Slack questions, conversation context, retrieval, grounded responses, and escalation routing.
+
+### 03 — Human Escalation
+
+`workflows/03-human-escalation.json`
+
+Handles escalation case creation, Airtable logging, and human review routing.
+
+---
 
 ## Security
 
-Public workflow exports have been sanitized.
+The public workflow exports have been sanitized.
 
-The repository does not include:
+This repository does not include:
 
 - API keys
 - OAuth tokens
-- private webhook URLs
+- passwords
 - credential bindings
-- internal account identifiers
+- private webhook IDs
+- private Airtable base IDs
+- private Slack workspace identifiers
 - production environment secrets
+
+---
 
 ## Status
 
-Prototype / portfolio implementation focused on demonstrating RAG architecture, workflow orchestration, conversational retrieval, grounded answer generation, and human-in-the-loop escalation.
+Portfolio prototype demonstrating:
+
+- RAG architecture
+- vector retrieval
+- LLM orchestration
+- conversational retrieval
+- grounded answer generation
+- workflow decomposition
+- human-in-the-loop escalation
+- business system integration
