@@ -6,4 +6,4 @@ AI-powered lead capture workflow that qualifies and summarizes incoming leads, s
 
 The sanitized n8n workflow export is stored in:
 
-`ai-lead-capture-bot-workflow.json`
+`workflow.json`
