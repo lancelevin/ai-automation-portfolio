@@ -1,53 +1,90 @@
 # AI Automation Portfolio
 
-## Project 1 — AI Lead Capture Bot
+A collection of AI-powered automation projects focused on workflow orchestration, LLM integration, RAG, APIs, business process automation, and human-in-the-loop systems.
 
-### What it does
-Automatically captures leads, uses Claude AI to qualify 
-and summarize them, saves to Airtable, and sends an 
-email notification to the business owner.
+---
 
-### Workflow
-Webhook → Claude AI → Airtable → Email Notification
+# Featured Project
 
-### Tools Used
-- n8n (workflow automation)
-- Claude AI by Anthropic (lead qualification)
-- Airtable (database)
-- Gmail (email notification)
+## RAG Support Assistant
 
-### How it works
-1. A lead submits a form on a website
-2. n8n catches the submission via Webhook
-3. Claude AI reads the lead data and rates them as Hot, Warm, or Cold
-4. The lead is saved to Airtable with AI summary
-5. Business owner receives an email notification instantly
+AI-powered internal knowledge assistant built with n8n, Retrieval-Augmented Generation (RAG), Slack, Qdrant, Google Drive, Airtable, Gemini, and Anthropic Claude.
 
-### Business Value
-Saves business owners hours of manual lead sorting. 
-Every lead is automatically qualified by AI within seconds.
+The system ingests approved company documents, retrieves relevant knowledge, generates grounded answers, handles conversational follow-ups, and escalates unsupported questions to a human reviewer.
 
-## Project 2 — AI Customer Support Agent (Telegram Bot)
+### Key Capabilities
 
-### What it does
-A Telegram bot powered by Claude AI that automatically 
-replies to customer inquiries 24/7 without human intervention.
+- Document ingestion from Google Drive
+- Recursive text chunking
+- Embedding generation
+- Qdrant vector search
+- Retrieval-Augmented Generation
+- Conversational follow-up handling
+- Grounded answer generation
+- Source attribution
+- Human-in-the-loop escalation
+- Airtable case logging
+- Slack integration
+- Escalation state tracking
 
-### Workflow
-Telegram Message → n8n → Claude AI → Reply back to Telegram
+### Architecture
 
-### Tools Used
-- n8n (workflow automation)
-- Claude AI by Anthropic (intelligent replies)
-- Telegram Bot API (messaging platform)
-- ngrok (webhook tunneling for local development)
+Knowledge Base  
+→ Document Ingestion  
+→ Chunking  
+→ Embeddings  
+→ Qdrant Vector Database  
+→ Slack Question  
+→ Retrieval  
+→ LLM Answerability Check  
+→ Grounded Response / Human Escalation
 
-### Business Value
-Businesses save hours of manual DM replies. 
-The bot handles FAQs, pricing, bookings, and policies 
-instantly — even at 3AM.
+### Tech Stack
 
-### Real World Demo
-Built a customized version for "Mani Mami" — a nail salon 
-in Fairview, Quezon City — that handles pricing inquiries, 
-booking policies, and FAQs in Taglish automatically.
+`n8n` · `RAG` · `Qdrant` · `Google Gemini` · `Anthropic Claude` · `Slack` · `Airtable` · `Google Drive` · `JavaScript` · `REST APIs`
+
+### Project Files
+
+[View the RAG Support Assistant →](./rag-support-assistant/)
+
+---
+
+# Other Projects
+
+## AI Lead Capture Bot
+
+AI-powered lead qualification workflow that receives inbound leads, uses Claude to summarize and classify them, stores structured data in Airtable, and sends automated notifications.
+
+**Workflow:**  
+Webhook → Claude → Airtable → Email
+
+**Tech:** `n8n` · `Anthropic Claude` · `Airtable` · `SMTP` · `REST API`
+
+[View Project →](./ai-lead-capture-bot/)
+
+---
+
+## AI Customer Support Agent
+
+Conversational support automation that receives customer inquiries through Telegram, generates business-specific responses using Claude, and replies automatically.
+
+**Workflow:**  
+Telegram → Claude → Telegram Response
+
+**Tech:** `n8n` · `Anthropic Claude` · `Telegram Bot API` · `REST API`
+
+[View Project →](./ai-customer-support-agent/)
+
+---
+
+# Focus Areas
+
+- AI Automation
+- Workflow Orchestration
+- Retrieval-Augmented Generation
+- LLM Integration
+- API Integration
+- Vector Databases
+- Conversational AI
+- Human-in-the-Loop Systems
+- Business Process Automation
